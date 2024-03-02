@@ -1,5 +1,7 @@
 extern crate sdl2;
 
+mod score_file;
+
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -41,6 +43,15 @@ fn create_texture_rect<'a>(canvas: &mut Canvas<Window>,
 }
 
 fn main() {
+    let scores:[u32; 2] = [10, 20];
+    let lines: [u32; 2] = [500,600];
+    score_file::save_highscores_and_lines(&scores, &lines);
+    if let Some(values) = score_file::load_highscores_and_lines() {
+        println!("scores:{:?}, lines:{:?}", values.0, values.1); // scores:[10, 20], lines:[500]
+    } else {
+        println!("None data");
+    }
+
     // 初始化sdl
     let sdl_context = sdl2::init().expect("SDL Init failed");
 
