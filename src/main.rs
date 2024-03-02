@@ -6,6 +6,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::{Window, WindowContext};
+use sdl2::image::{LoadTexture, InitFlag};
 
 use std::time::{Duration, SystemTime};
 use std::thread::sleep;
@@ -42,8 +43,12 @@ fn create_texture_rect<'a>(canvas: &mut Canvas<Window>,
 fn main() {
     // 初始化sdl
     let sdl_context = sdl2::init().expect("SDL Init failed");
+
     // 获取视频系统
     let video_subsystem = sdl_context.video().expect("Couldn't get sdl video subsystem");
+    
+    let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG).expect("Failed to initialize the image context");
+    
     // 获取窗口，并设置窗口的属性，整个屏幕居中，使用opengl渲染
     let window = video_subsystem.window("rust-sdl2 demo: Video", 800, 600)
                     .position_centered()
@@ -62,6 +67,8 @@ fn main() {
     // 创建一个正方形纹理
     let green_square = create_texture_rect(&mut canvas, &texture_creator, TextureColor::Green, TEXTURE_SIZE).expect("Failed to create a texture");
     let blue_square = create_texture_rect(&mut canvas, &texture_creator, TextureColor::Blue, TEXTURE_SIZE).expect("Failed to create a texture");
+
+    let image_texture = texture_creator.load_texture("res/images/flower.jpeg").expect("Failed to load image");
 
     let timer = SystemTime::now();
 
@@ -99,8 +106,11 @@ fn main() {
         };
 
         // 把纹理拷贝到窗口中的指定位置
+        canvas.copy(&image_texture, None, None).expect("Failed to copy image to window");
+        // 后拷贝的会显示在上面
         canvas.copy(&square_texture, None, Rect::new(0, 0, TEXTURE_SIZE, TEXTURE_SIZE))
-                    .expect("Failed to copy texture into window");
+                    .expect("Failed to copy texture into window");        
+                
         // 更新窗口显示
         canvas.present();
 
