@@ -12,8 +12,10 @@ use sdl2::image::{LoadTexture, InitFlag};
 use std::time::{Duration, SystemTime};
 use std::thread::sleep;
 
+use crate::score_file::print_game_information;
 use crate::tetris::update_tetris;
 use crate::tetris::Tetris;
+
 
 // 一个格子的大小
 const TETRIS_HEIGHT: usize = 40;
@@ -36,6 +38,50 @@ fn create_texture_rect<'a>(canvas: &mut Canvas<Window>,
     }
 }
 
+fn create_texture_from_text<'a>(texture_creator: &'a TextureCreator<WindowContext>,
+       font: &sdl2::ttf::Font,
+       text: &str,
+       r: u8, g: u8, b: u8) -> Option<Texture<'a>> {
+    if let Ok(surface) = font.render(text).blended(Color::RGB(r, g, b)) {
+        texture_creator.create_texture_from_surface(&surface).ok()
+    } else {
+        None
+    }
+}
+
+fn get_rect_from_text(text: &str, x: i32, y: i32) -> Option<Rect> {
+    Some(Rect::new(x, y, text.len() as u32 * 12, 20))
+}
+
+fn display_game_information<'a>(tetris: &Tetris,
+       canvas: &mut Canvas<Window>,
+       texture_creator: &'a TextureCreator<WindowContext>,
+       font: &sdl2::ttf::Font,
+       start_x_point: i32) {
+     let score_text = format!("Score: {}", tetris.score);
+     let lines_sent_text = format!("Lines sent: {}", tetris.nb_lines);
+     let level_text = format!("Level: {}", tetris.current_level);
+
+     let score = create_texture_from_text(&texture_creator, &font,
+        &score_text, 255, 255, 255)
+        .expect("Cannot render text");
+     let lines_sent = create_texture_from_text(&texture_creator, &font,
+        &lines_sent_text, 255, 255, 255)
+        .expect("Cannot render text");
+     let level = create_texture_from_text(&texture_creator, &font,
+        &level_text, 255, 255, 255)
+        .expect("Cannot render text");
+     
+     canvas.copy(&score, None, get_rect_from_text(&score_text, 
+        start_x_point, 75))
+          .expect("Couldn't copy text");
+    canvas.copy(&lines_sent, None, get_rect_from_text(&score_text,
+        start_x_point, 125))
+          .expect("Couldn't copy text");
+    canvas.copy(&level, None, get_rect_from_text(&score_text, 
+       start_x_point, 160))
+          .expect("Couldn't copy text");
+}
 
 fn main() {
     // 初始化sdl
@@ -45,6 +91,11 @@ fn main() {
     let video_subsystem = sdl_context.video().expect("Couldn't get sdl video subsystem");
     
     let _image_context = sdl2::image::init(InitFlag::PNG | InitFlag::JPG).expect("Failed to initialize the image context");
+    let ttf_context = sdl2::ttf::init().expect("SDL TTF initialization
+        failed");
+    let mut font = ttf_context.load_font("res/font/Bitter-Regular.ttf", 60).expect("Couldn't load the font");  
+    font.set_style(sdl2::ttf::FontStyle::NORMAL);
+
     let width = 600;
     let height = 800;
     let grid_x = 20; // 地图开始的左边距
@@ -90,32 +141,31 @@ fn main() {
     // 绘制窗口的背景色
     canvas.set_draw_color(Color::RGB(255, 0, 0));
     canvas.clear();
-    canvas.copy(&image_texture, None, None).expect("Couldn't copy texture into window");
-    // 纹理会被拉伸以适应目标区域大小
-    canvas.copy(&border,
+
+    loop {
+        // 处理下落逻辑数据
+        tetris::falling(&mut tetris, &mut timer);
+
+        canvas.copy(&image_texture, None, None).expect("Couldn't copy texture into window");
+        // 纹理会被拉伸以适应目标区域大小
+        canvas.copy(&border,
         None,
         Rect::new(10,
                   (height - TETRIS_HEIGHT as u32 * 16) as i32 / 2 - 10, // 垂直居中
                   TETRIS_HEIGHT as u32 * 10 + 20, TETRIS_HEIGHT as u32 * 16 + 20))
-        .expect("Couldn't copy texture into window");
-    
-
-    loop {
-        if tetris::falling(&mut tetris, &timer) {
-            timer = SystemTime::now();
-        }
-
+        .expect("Couldn't copy texture into window");    
         // 游戏区域的黑色背景，用来擦除刷新
         canvas.copy(&grid,
             None,
             Rect::new(20,(height - TETRIS_HEIGHT as u32 * 16) as i32 / 2,TETRIS_HEIGHT as u32 * 10, TETRIS_HEIGHT as u32 * 16))
                  .expect("Couldn't copy texture into window");
-
+        // 如果当前块已经被合并了，创建新一个新的方块开始下落
         if !update_tetris(&mut tetris) {
             break
         }
 
         let mut quit = false;
+        // 处理按键事件，如果按键事件导致方块合并到了网格地图中，就不需要绘制下落的方块了，否则还需要绘制下落的方块
         if !tetris::handle_events(&mut tetris, &mut quit, &mut timer, &mut event_pump) {
             if let Some(ref mut piece) = tetris.current_piece {
                 for (line_nb, line) in piece.states[piece.current_state as usize].iter().enumerate() {
@@ -137,9 +187,12 @@ fn main() {
             }
         }
 
-        if quit {            
+        if quit {  
+            print_game_information(&tetris);          
             break
         }
+       
+        display_game_information(&tetris, &mut canvas, &texture_creator, &font, TETRIS_HEIGHT as i32 * 10 + 40);
 
         // 绘制地图中所有非0的格子，即已经合并过的，这里面没有正在移动的块，正在移动的块还没合并到地图里面
         for (line_nb, line) in tetris.game_map.iter().enumerate() {
@@ -155,7 +208,7 @@ fn main() {
                   .expect("Couldn't copy texture into window");
             }
         }
-                
+               
         // 更新窗口显示
         canvas.present();
 

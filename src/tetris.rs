@@ -4,46 +4,52 @@ use std::time::SystemTime;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
-const LEVEL_TIMES: [u32; 10] = [1000, 850, 700, 600, 500, 400, 300, 250, 221, 190];
-const LEVEL_LINES: [u32; 10] = [20,   40,  60,  80,  100, 120, 140, 160, 180, 200];
+use crate::score_file::print_game_information;
 
-type Piece = Vec<Vec<u8>>;
+const LEVEL_TIMES: [u32; 10] = [1000, 850, 700, 600, 500, 400, 300, 250, 221, 190];
+const LEVEL_LINES: [u32; 10] = [5,   40,  60,  80,  100, 120, 140, 160, 180, 200];
+
+type Piece = Vec<Vec<u8>>; // 表示一种二维图形
 type States = Vec<Piece>;
 
 pub struct Tetrimino {
     pub states: States,
-    pub x: isize,
+    pub x: isize,  // 方块的坐标位置
     pub y: usize,
-    pub current_state: u8,
+    pub current_state: u8, // 当前是哪一种状态，例如长条I有两种
 }
 
 impl Tetrimino {
     fn rotate(&mut self, game_map: &[Vec<u8>]) {
+        // 旋转就认为时状态的变化
         let mut tmp_state = self.current_state + 1;
+        // 状态不能超过最大情况
         if tmp_state as usize >= self.states.len() {
             tmp_state = 0;
         }
+        // 在水平方向尝试能不能找到合适的文位置，简化游戏
         let x_pos = [0, -1, 1, -2, 2, -3];
         for x in x_pos.iter() {
             if self.test_position(game_map, tmp_state as usize,
                                   self.x + x, self.y) == true {
-                self.current_state = tmp_state;
+                self.current_state = tmp_state; // 如果不冲突，就可以切换为这个形状
                 self.x += *x;
                 break
             }
         }
     }
-
+    // 检测与网格中的其他元素是否冲突
     fn test_position(&self, game_map: &[Vec<u8>],
                      tmp_state: usize, x: isize, y: usize) -> bool {
         for shift_y in 0..4 {
             for shift_x in 0..4 {
+                // 遍历方块当前状态的每一个点
                 let x = x + shift_x;
-                if self.states[tmp_state][shift_y][shift_x as usize] != 0 &&
-                    (y + shift_y >= game_map.len() ||
+                if self.states[tmp_state][shift_y][shift_x as usize] != 0 && // 方块中这个格子不为0
+                    (y + shift_y >= game_map.len() || // y 方向没有超过网格的高度
                      x < 0 ||
-                     x as usize >= game_map[y + shift_y].len() ||
-                     game_map[y + shift_y][x as usize] != 0) {
+                     x as usize >= game_map[y + shift_y].len() || // 没有超过行的最大宽度10
+                     game_map[y + shift_y][x as usize] != 0) { // 和地图网格的当前位置的格子不冲突
                     return false;
                 }
             }
@@ -55,6 +61,7 @@ impl Tetrimino {
         self.test_position(game_map, self.current_state as usize, self.x, self.y)
     }
 
+    // 移动方块的位置
     fn change_position(&mut self, game_map: &[Vec<u8>], new_x: isize, new_y: usize) -> bool {
         if self.test_position(game_map, self.current_state as usize, new_x, new_y) == true {
             self.x = new_x as isize;
@@ -231,11 +238,11 @@ impl TetriminoGenerator for TetriminoT {
 }
 
 pub struct Tetris {
-    pub game_map: Vec<Vec<u8>>,
+    pub game_map: Vec<Vec<u8>>,// 16*10的网格
     pub current_level: u32,
     pub score: u32,
-    pub nb_lines: u32,
-    pub current_piece: Option<Tetrimino>,
+    pub nb_lines: u32, // 消除的总行数
+    pub current_piece: Option<Tetrimino>,// 当前下落的方块
 } 
 
 impl Tetris {
@@ -247,66 +254,18 @@ impl Tetris {
         }
         Tetris {
             game_map: game_map,
-            current_level: 1,
+            current_level: 1, // 从1级开始
             score: 0,
             nb_lines: 0,
             current_piece: None,
         }
     }
 
-    fn update_score(&mut self, to_add: u32) {
-        self.score += to_add;
-    }
-
-    fn increase_level(&mut self) {
-        self.current_level += 1;
-    }
-
-    fn increase_line(&mut self) {
-        self.nb_lines += 1;
-        if self.nb_lines > LEVEL_LINES[self.current_level as usize - 1] {
-            self.increase_level();
-        }
-    }
-
-    fn check_lines(&mut self) {
-        let mut y = 0;
-        let mut score_add = 0;
-
-        while y < self.game_map.len() {
-            let mut complete = true;
-            // 一行中有一个格子是0，说明不能消除
-            for x in &self.game_map[y] {
-                if *x == 0 {
-                    complete = false;
-                    break
-                }
-            }
-            // 如果这一行可以消除
-            if complete == true {
-                score_add += self.current_level;
-                self.game_map.remove(y);
-                y -= 1;
-            }
-            y += 1;
-        }
-        // 所有行都被消除了
-        if self.game_map.len() == 0 {
-            // A "tetris"!
-            score_add += 1000;
-        }
-        self.update_score(score_add);
-        while self.game_map.len() < 16 {
-            self.increase_line();
-            self.game_map.insert(0, vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-        }
-    }
-
     // 随机生成一个形状
     fn create_new_tetrimino(&self) -> Tetrimino {
-        static mut PREV: u8 = 7;
+        static mut PREV: u8 = 7; // 和C++中的静态变量作用相同
         let mut rand_nb = rand::random::<u8>() % 7;
-        // 避免生成两个相同的
+        // 避免生成两个相同的，因为静态变量存在多线程同时访问的问题，所以是不安全的
         if unsafe { PREV } == rand_nb {
             rand_nb = rand::random::<u8>() % 7;
         }
@@ -324,15 +283,29 @@ impl Tetris {
         }
     }
 
-    // 把一个块放进地图中
+    fn update_score(&mut self, to_add: u32) {
+        self.score += to_add;
+    }
+
+    fn increase_level(&mut self) {
+        self.current_level += 1;
+    }
+    // 消除的行数超过当前级别的行数要求后，级别增加一级
+    fn increase_line(&mut self) {
+        self.nb_lines += 1;
+        if self.nb_lines > LEVEL_LINES[self.current_level as usize - 1] {
+            self.increase_level();
+        }
+    }
+
+    // 把一个块合并地图网格中
     fn make_permanent(&mut self) {
         let mut to_add = 0;
         if let Some(ref mut piece) = self.current_piece {
             let mut shift_y = 0;
-
-            // 遍历当前块的y轴不会超过地图的高度
+            // 遍历当前块的y轴，并且当前位置的y不会超过地图的高度
             while shift_y < piece.states[piece.current_state as usize].len() &&
-                  piece.y + shift_y < self.game_map.len() {
+                  piece.y + shift_y < self.game_map.len() { 
                 let mut shift_x = 0;
                 // 遍历当前块的每一个x轴的格子不会超过地图的宽度
                 while shift_x < piece.states[piece.current_state as usize][shift_y].len() &&
@@ -357,11 +330,46 @@ impl Tetris {
         self.current_piece = None;
     }
 
+    fn check_lines(&mut self) {
+        let mut remove_num = 0;
+        let mut y = 0;
+        let mut score_add = 0;
+        // 遍历网格的每一行
+        while y < self.game_map.len() {
+            let mut complete = true;
+            // 一行中有一个格子是0，说明不能消除
+            for x in &self.game_map[y] {
+                if *x == 0 {
+                    complete = false;
+                    break
+                }
+            }
+            // 如果这一行可以消除
+            if complete == true {
+                score_add += self.current_level;
+                self.game_map.remove(y);
+                remove_num += 1;
+                y -= 1;
+            }
+            y += 1;
+        }
+        // 连消4行
+        if remove_num == 4 {
+            // A "tetris"!
+            score_add += 1000;
+        }
+        self.update_score(score_add);
+        while self.game_map.len() < 16 {
+            self.increase_line();
+            // 补上消除的行，保证网格还是16*10
+            self.game_map.insert(0, vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        }
+    }    
 }
 
 pub fn handle_events(tetris: &mut Tetris, quit: &mut bool, timer: &mut SystemTime,
                 event_pump: &mut sdl2::EventPump) -> bool {
-    // 一个块正在自动下落
+    // 一个块正在下落
     let mut make_permanent = false;
     if let Some(ref mut piece) = tetris.current_piece {
         let mut tmp_x = piece.x;
@@ -375,7 +383,7 @@ pub fn handle_events(tetris: &mut Tetris, quit: &mut bool, timer: &mut SystemTim
                     break
                 }
                 Event::KeyDown { keycode: Some(Keycode::Down), .. } => {
-                    *timer = SystemTime::now();
+                    *timer = SystemTime::now();// 更新下落的计时器
                     tmp_y += 1;
                 }
                 Event::KeyDown { keycode: Some(Keycode::Right), .. } => {
@@ -390,22 +398,26 @@ pub fn handle_events(tetris: &mut Tetris, quit: &mut bool, timer: &mut SystemTim
                 Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
                     let x = piece.x;
                     let mut y = piece.y;
-                    // 手动快速下降
+                    // 手动快速下降到底部或有冲突不能移动
                     while piece.change_position(&tetris.game_map, x, y + 1) == true {
                         y += 1;
                     }
+                    // 不能移动了，所以标记为需要合并到网格地图
                     make_permanent = true;
                 }
                 _ => {}
             }
         }
+        // 根据按键后的坐标位置移动方块
         if !make_permanent {
+            // 如果不能移动，且当前y的值也没有变化，说明已经移动到最下面了，需要合并方块到网格
             if piece.change_position(&tetris.game_map, tmp_x, tmp_y) == false && tmp_y != piece.y {
                 make_permanent = true;
             }
         }
     }
     if make_permanent {
+        // 合并方块后，更新计时器
         tetris.make_permanent();
         *timer = SystemTime::now();
     }
@@ -424,7 +436,7 @@ fn is_time_over(tetris: &Tetris, timer: &SystemTime) -> bool {
     }
 }
 
-pub fn falling(tetris: & mut Tetris, timer: &SystemTime) -> bool{
+pub fn falling(tetris: & mut Tetris, timer: &mut SystemTime) {
     if is_time_over(&tetris, &timer) {
         let mut make_permanent = false;
         if let Some(ref mut piece) = tetris.current_piece {
@@ -436,10 +448,7 @@ pub fn falling(tetris: & mut Tetris, timer: &SystemTime) -> bool{
         if make_permanent {
           tetris.make_permanent();
         }        
-        true
-    }
-    else {
-        false
+        *timer = SystemTime::now();
     }
 }
 
@@ -447,9 +456,9 @@ pub fn update_tetris(tetris: & mut Tetris) -> bool {
     let mut ret = true;
     if tetris.current_piece.is_none() {
         let current_piece = tetris.create_new_tetrimino();
-        if !current_piece.test_current_position(&tetris.game_map) {
-            //print_game_information(&tetris);
-            ret = false;
+        if !current_piece.test_current_position(&tetris.game_map) {     
+            print_game_information(tetris);       
+            ret = false; // 新创建的方块就已经冲突了，说明游戏结束了
         } else {
             tetris.current_piece = Some(current_piece);
             ret = true;
