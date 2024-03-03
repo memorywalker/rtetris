@@ -1,6 +1,9 @@
 use std::fs::File;
 use std::io::{self, Read, Write};
 
+const NB_HIGHSCORES: usize = 5;
+const HIGHSCORE_FILE: &'static str = "saves.txt";
+
 fn write_into_file(content: &str, file_name: &str) -> io::Result<()> {
     let mut f = File::create(file_name)?;
     f.write_all(content.as_bytes())
@@ -42,5 +45,20 @@ pub fn load_highscores_and_lines() -> Option<(Vec<u32>, Vec<u32>)> {
         }
     } else {
         None
+    }
+}
+
+fn update_vec(v: &mut Vec<u32>, value: u32) -> bool {
+    if v.len() < NB_HIGHSCORES {
+        v.push(value);
+        true
+    } else {
+        for entry in v.iter_mut() {
+            if value > *entry {
+                *entry = value;
+                return true;
+            }
+        }
+        false
     }
 }
